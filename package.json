@@ -1,0 +1,11 @@
+{
+  "name": "copart-scraper",
+  "version": "1.0.0",
+  "main": "copartBuscar.js",
+  "scripts": {
+    "start": "node copartBuscar.js"
+  },
+  "dependencies": {
+    "playwright": "^1.43.1"
+  }
+}
