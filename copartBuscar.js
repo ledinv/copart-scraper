@@ -1,48 +1,38 @@
-// copartBuscar.js
-const { chromium } = require('playwright');
+// copartBuscar.js usando Axios (sin Playwright)
+const axios = require('axios');
+const fs = require('fs');
 
-(async () => {
-  const browser = await chromium.launch({ headless: true }); // 🔁 AQUÍ EL CAMBIO
-  const page = await browser.newPage();
+async function buscarCopart(marca, modelo, anoInicio, anoFin) {
+  const url = 'https://www.copart.com/public/lots/search';
 
-  await page.goto('https://www.copart.com/vehicleFinder', { waitUntil: 'networkidle' });
+  const params = {
+    query: `${marca} ${modelo}`,
+    page: 1,
+    size: 100,
+    // Si querés filtrar por año, tendríamos que revisar cómo se pasa en la API (puedo ayudarte a afinar esto después)
+  };
 
-  console.log('🟢 Página cargada...');
+  try {
+    const response = await axios.post(url, params, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-  await page.waitForTimeout(3000);
+    const resultados = response.data.data.results.map(lote => ({
+      lote: lote.lotNumberStr,
+      ubicacion: `${lote.itemLocation.city}, ${lote.itemLocation.state}`,
+      fecha: lote.auctionDate,
+      currentBid: lote.currentBid,
+      estatus: lote.lotCurrentStatus,
+    }));
 
-  await page.locator('text=All Makes').click();
-  await page.waitForSelector('ul.p-dropdown-items', { timeout: 10000 });
-  await page.locator('text=TOYOTA').click();
+    fs.writeFileSync('busqueda-actual.json', JSON.stringify(resultados, null, 2));
+    console.log('✔ Resultados guardados en busqueda-actual.json');
+  } catch (error) {
+    console.error('❌ Error buscando en Copart:', error.message);
+  }
+}
 
-  await page.waitForTimeout(2000);
-
-  await page.locator('text=All Models').click();
-  await page.waitForSelector('ul.p-dropdown-items', { timeout: 10000 });
-  await page.locator('text=COROLLA').click();
-
-  await page.waitForTimeout(2000);
-
-  await page.locator('text=Year From').click();
-  await page.waitForSelector('ul.p-dropdown-items', { timeout: 10000 });
-  await page.locator('text=2015').click();
-
-  await page.waitForTimeout(1000);
-
-  await page.locator('text=Year To').click();
-  await page.waitForSelector('ul.p-dropdown-items', { timeout: 10000 });
-  await page.locator('text=2019').click();
-
-  await page.waitForTimeout(1000);
-
-  await page.locator('button:has-text("Search")').click();
-
-  console.log('🔍 Búsqueda enviada...');
-
-  await page.waitForTimeout(7000);
-
-  const resultados = await page.$$eval('.result-item', items => items.map(i => i.textContent.trim()));
-  console.log(`🔧 Resultados encontrados: ${resultados.length}`);
-
-  await browser.close();
-})();
+// Llamada de prueba
+buscarCopart('Toyota', 'Corolla', 2015, 2020);
