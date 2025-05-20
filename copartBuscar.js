@@ -1,60 +1,43 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
+// buscarCopart.js usando Playwright (simulando navegador real)
+const { chromium } = require('playwright');
 const fs = require('fs');
 
 async function buscarBidCars(marca, modelo, anoInicio, anoFin) {
   const url = `https://bid.cars/en/search/results?search-type=filters&status=All&type=Automobile&make=${marca}&model=${modelo}&year-from=${anoInicio}&year-to=${anoFin}&auction-type=Copart`;
 
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
   try {
-    const { data: html } = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive',
-        'DNT': '1',
-        'Referer': 'https://bid.cars/en/',
-        'Upgrade-Insecure-Requests': '1'
-      },
-      timeout: 10000 // 10 segundos por si la carga tarda
-    });
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000); // espera para que cargue todo
 
-    const $ = cheerio.load(html);
-    const resultados = [];
+    const resultados = await page.evaluate(() => {
+      const vehiculos = [];
+      const elementos = document.querySelectorAll('.vehicle-item');
 
-    $('.vehicle-item').each((i, el) => {
-      const estado = $(el).find('.lot-status').text().trim();
-      if (
-        estado.toLowerCase().includes('sold') ||
-        estado.toLowerCase().includes('not sold') ||
-        estado.toLowerCase().includes('future') ||
-        estado.toLowerCase().includes('closed')
-      ) {
-        return; // ignorar vehículos vendidos o inactivos
-      }
+      elementos.forEach(el => {
+        const estado = el.querySelector('.lot-status')?.innerText.trim().toLowerCase();
+        if (estado?.includes('sold') || estado?.includes('not sold') || estado?.includes('closed') || estado?.includes('future')) return;
 
-      const titulo = $(el).find('.vehicle-title').text().trim();
-      const vin = $(el).find('.vin-text').text().trim();
-      const precio = $(el).find('.current-bid .bid-value').text().trim() || 'N/A';
-      const ubicacion = $(el).find('.location').text().trim();
-      const enlace = 'https://bid.cars' + $(el).find('.vehicle-title a').attr('href');
-      const imagen = $(el).find('.vehicle-image img').attr('data-src') || '';
+        const titulo = el.querySelector('.vehicle-title')?.innerText.trim();
+        const vin = el.querySelector('.vin-text')?.innerText.trim();
+        const precio = el.querySelector('.current-bid .bid-value')?.innerText.trim() || 'N/A';
+        const ubicacion = el.querySelector('.location')?.innerText.trim();
+        const enlace = 'https://bid.cars' + (el.querySelector('.vehicle-title a')?.getAttribute('href') || '');
+        const imagen = el.querySelector('.vehicle-image img')?.getAttribute('data-src') || '';
 
-      resultados.push({
-        titulo,
-        vin,
-        precio,
-        ubicacion,
-        estado,
-        enlace,
-        imagen
+        vehiculos.push({ titulo, vin, precio, ubicacion, estado, enlace, imagen });
       });
+
+      return vehiculos;
     });
 
     fs.writeFileSync('busqueda-actual.json', JSON.stringify(resultados, null, 2));
-    console.log(`✔ Se guardaron ${resultados.length} vehículos disponibles en busqueda-actual.json`);
+    console.log(`✔ Se guardaron ${resultados.length} resultados disponibles en busqueda-actual.json`);
   } catch (error) {
     console.error('❌ Error durante la búsqueda en BidCars:', error.message);
+  } finally {
+    await browser.close();
   }
 }
 
