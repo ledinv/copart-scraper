@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "main": "copartBuscar.js",
   "scripts": {
-    "start": "node copartBuscar.js"
+    "start": "node copartBuscar.js",
+    "postinstall": "npx playwright install --with-deps"
   },
   "dependencies": {
-    "axios": "^1.6.8",
-    "cheerio": "^1.0.0-rc.12"
+    "playwright": "^1.43.1"
   }
 }
+
