@@ -5,38 +5,35 @@ async function buscarBidCars(marca, modelo, anoInicio, anoFin) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
-  // Navegar a la página principal
-  await page.goto('https://bid.cars/en', { waitUntil: 'networkidle' });
+  // Entrar a la página y evitar redirección prematura
+  await page.goto('https://bid.cars/en', { waitUntil: 'domcontentloaded' });
 
-  // Si redirige automáticamente, volver
+  // Si fue redirigido directamente a /search, volver a intentar
   if (page.url().includes('/search')) {
-    console.log('⚠ Redirigido, reintentando...');
-    await page.goto('https://bid.cars/en', { waitUntil: 'networkidle' });
+    console.log('⚠ Redirigido automáticamente a resultados, reintentando...');
+    await page.goto('https://bid.cars/en', { waitUntil: 'domcontentloaded' });
   }
 
-  // Interacción con el select de marca
-  await page.waitForSelector('#select2-make-container', { timeout: 15000 });
+  // Esperar selectores visibles
+  await page.waitForSelector('#select2-make-container', { state: 'visible', timeout: 15000 });
+
+  // Marca
   await page.click('#select2-make-container');
-  await page.waitForSelector('.select2-search__field', { timeout: 5000 });
   await page.fill('.select2-search__field', marca);
   await page.keyboard.press('Enter');
 
-  // Interacción con el select de modelo
-  await page.waitForSelector('#select2-model-container', { timeout: 10000 });
+  // Modelo
   await page.click('#select2-model-container');
-  await page.waitForSelector('.select2-search__field', { timeout: 5000 });
   await page.fill('.select2-search__field', modelo);
   await page.keyboard.press('Enter');
 
-  // Interacción con año desde
+  // Año desde
   await page.click('#select2-from-container');
-  await page.waitForSelector('.select2-search__field', { timeout: 5000 });
   await page.fill('.select2-search__field', anoInicio.toString());
   await page.keyboard.press('Enter');
 
-  // Interacción con año hasta
+  // Año hasta
   await page.click('#select2-to-container');
-  await page.waitForSelector('.select2-search__field', { timeout: 5000 });
   await page.fill('.select2-search__field', anoFin.toString());
   await page.keyboard.press('Enter');
 
@@ -46,11 +43,11 @@ async function buscarBidCars(marca, modelo, anoInicio, anoFin) {
     await iaai.click();
   }
 
-  // Hacer clic en botón de búsqueda
-  await page.click('button#show-btn');
-  await page.waitForTimeout(5000); // Esperar resultados
+  // Hacer búsqueda
+  await page.click('#show-btn');
+  await page.waitForTimeout(5000); // esperar que cargue
 
-  // Extraer resultados visibles
+  // Extraer resultados
   const resultados = await page.evaluate(() => {
     const cards = document.querySelectorAll('.vehicle-item');
     const data = [];
@@ -62,7 +59,6 @@ async function buscarBidCars(marca, modelo, anoInicio, anoFin) {
       const estado = card.querySelector('.lot-status')?.innerText?.trim();
       const enlace = card.querySelector('.vehicle-title a')?.href;
       const imagen = card.querySelector('.vehicle-image img')?.getAttribute('data-src');
-
       if (titulo && estado && !['Sold', 'Not Sold', 'Closed', 'Future'].includes(estado)) {
         data.push({ titulo, vin, precio, ubicacion, estado, enlace, imagen });
       }
@@ -75,5 +71,5 @@ async function buscarBidCars(marca, modelo, anoInicio, anoFin) {
   console.log(`✔ Se guardaron ${resultados.length} resultados disponibles en busqueda-actual.json`);
 }
 
-// Ejecución de prueba
+// Prueba directa
 buscarBidCars('Toyota', '4Runner', 2003, 2005);
