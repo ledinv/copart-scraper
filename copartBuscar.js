@@ -1,45 +1,73 @@
-// buscarCopart.js usando Playwright (simulando navegador real)
 const { chromium } = require('playwright');
 const fs = require('fs');
 
 async function buscarBidCars(marca, modelo, anoInicio, anoFin) {
-  const url = `https://bid.cars/en/search/results?search-type=filters&status=All&type=Automobile&make=${marca}&model=${modelo}&year-from=${anoInicio}&year-to=${anoFin}&auction-type=Copart`;
-
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  try {
-    await page.goto(url, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(3000); // espera para que cargue todo
+  await page.goto('https://bid.cars/en', { waitUntil: 'networkidle' });
 
-    const resultados = await page.evaluate(() => {
-      const vehiculos = [];
-      const elementos = document.querySelectorAll('.vehicle-item');
+  // Esperar los selects
+  await page.waitForSelector('#select2-make-container');
+  await page.waitForSelector('#select2-model-container');
+  await page.waitForSelector('#select2-from-container');
+  await page.waitForSelector('#select2-to-container');
 
-      elementos.forEach(el => {
-        const estado = el.querySelector('.lot-status')?.innerText.trim().toLowerCase();
-        if (estado?.includes('sold') || estado?.includes('not sold') || estado?.includes('closed') || estado?.includes('future')) return;
+  // Seleccionar la marca
+  await page.click('#select2-make-container');
+  await page.fill('.select2-search__field', marca);
+  await page.keyboard.press('Enter');
 
-        const titulo = el.querySelector('.vehicle-title')?.innerText.trim();
-        const vin = el.querySelector('.vin-text')?.innerText.trim();
-        const precio = el.querySelector('.current-bid .bid-value')?.innerText.trim() || 'N/A';
-        const ubicacion = el.querySelector('.location')?.innerText.trim();
-        const enlace = 'https://bid.cars' + (el.querySelector('.vehicle-title a')?.getAttribute('href') || '');
-        const imagen = el.querySelector('.vehicle-image img')?.getAttribute('data-src') || '';
+  // Esperar y seleccionar modelo
+  await page.click('#select2-model-container');
+  await page.fill('.select2-search__field', modelo);
+  await page.keyboard.press('Enter');
 
-        vehiculos.push({ titulo, vin, precio, ubicacion, estado, enlace, imagen });
-      });
+  // Seleccionar año desde
+  await page.click('#select2-from-container');
+  await page.keyboard.type(anoInicio.toString());
+  await page.keyboard.press('Enter');
 
-      return vehiculos;
-    });
+  // Seleccionar año hasta
+  await page.click('#select2-to-container');
+  await page.keyboard.type(anoFin.toString());
+  await page.keyboard.press('Enter');
 
-    fs.writeFileSync('busqueda-actual.json', JSON.stringify(resultados, null, 2));
-    console.log(`✔ Se guardaron ${resultados.length} resultados disponibles en busqueda-actual.json`);
-  } catch (error) {
-    console.error('❌ Error durante la búsqueda en BidCars:', error.message);
-  } finally {
-    await browser.close();
+  // Desactivar IAAI (activar solo Copart)
+  const iaaiCheckbox = await page.$('input[name="iaai"]');
+  const isChecked = await iaaiCheckbox.isChecked();
+  if (isChecked) {
+    await iaaiCheckbox.click();
   }
+
+  // Ejecutar la búsqueda
+  await page.click('button:has-text("Show")');
+  await page.waitForTimeout(5000); // Esperar que carguen resultados
+
+  // Extraer resultados
+  const resultados = await page.evaluate(() => {
+    const cards = document.querySelectorAll('.vehicle-item');
+    const data = [];
+    cards.forEach(card => {
+      const titulo = card.querySelector('.vehicle-title')?.innerText?.trim();
+      const vin = card.querySelector('.vin-text')?.innerText?.trim();
+      const precio = card.querySelector('.bid-value')?.innerText?.trim() || 'N/A';
+      const ubicacion = card.querySelector('.location')?.innerText?.trim();
+      const estado = card.querySelector('.lot-status')?.innerText?.trim();
+      const enlace = card.querySelector('.vehicle-title a')?.href;
+      const imagen = card.querySelector('.vehicle-image img')?.getAttribute('data-src');
+
+      if (titulo && estado && !['Sold', 'Not Sold', 'Closed', 'Future'].includes(estado)) {
+        data.push({ titulo, vin, precio, ubicacion, estado, enlace, imagen });
+      }
+    });
+    return data;
+  });
+
+  await browser.close();
+
+  fs.writeFileSync('busqueda-actual.json', JSON.stringify(resultados, null, 2));
+  console.log(`✔ Se guardaron ${resultados.length} resultados disponibles en busqueda-actual.json`);
 }
 
-// Prueba fija: Toyota 4Runner 2003–2005
-buscarBidCars('Toyota', '4runner', 2003, 2005);
+// Ejemplo de prueba
+buscarBidCars('Toyota', '4Runner', 2003, 2005);
