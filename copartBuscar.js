@@ -1,60 +1,42 @@
 const { chromium } = require('playwright');
 
 (async () => {
-  console.log("🟡 Entrando a Copart...");
-
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const context = await browser.newContext();
+  const page = await context.newPage();
 
-  try {
-    await page.goto('https://www.copart.com/vehicleFinder');
+  console.log('🟡 Entrando a Copart...');
+  await page.goto('https://www.copart.com/vehicleFinder', { waitUntil: 'domcontentloaded' });
 
-    // Esperar que el campo de año desde esté disponible y hacer clic
-    await page.waitForSelector('label:has-text("Year")');
-    
-    // Click en el dropdown de "Year from"
-    const yearFromDropdown = await page.locator('label:has-text("Year")').locator('xpath=..').locator('button');
-    await yearFromDropdown.click();
-    await page.locator('ul[role="listbox"] >> text=2015').click();
+  // Esperar a que el filtro de año esté visible
+  await page.waitForSelector('label:has-text("Year")', { timeout: 30000 });
 
-    // Click en el dropdown de "Year to"
-    const yearToLabel = await page.locator('label:has-text("To")');
-    const yearToDropdown = yearToLabel.locator('xpath=..').locator('button');
-    await yearToDropdown.click();
-    await page.locator('ul[role="listbox"] >> text=2026').click();
+  // Seleccionar Año Desde (ej. 2015)
+  await page.locator('label:has-text("Year")').locator('..').locator('span:has-text("2015")').click();
+  await page.waitForTimeout(500); // espera breve para abrir dropdown
+  await page.locator('li:has-text("2015")').click();
 
-    // Seleccionar marca
-    const makeDropdown = await page.getByLabel('Make');
-    await makeDropdown.click();
-    await page.getByRole('option', { name: 'Acura' }).click();
+  // Seleccionar Año Hasta (ej. 2023)
+  await page.locator('label:has-text("To")').locator('..').locator('span:has-text("2026")').click();
+  await page.waitForTimeout(500);
+  await page.locator('li:has-text("2023")').click();
 
-    // Esperar un momento para cargar modelos
-    await page.waitForTimeout(1500);
+  // Esperar que Make esté listo
+  await page.locator('label:has-text("Make")').locator('..').locator('span:has-text("All Makes")').click();
+  await page.waitForTimeout(500);
+  await page.locator('li:has-text("Toyota")').click(); // cambia por otra marca si deseas
 
-    // Seleccionar modelo
-    const modelDropdown = await page.getByLabel('Model');
-    await modelDropdown.click();
-    await page.getByRole('option', { name: 'TL' }).click();
+  // Esperar que Model esté listo
+  await page.locator('label:has-text("Model")').locator('..').locator('span:has-text("All Models")').click();
+  await page.waitForTimeout(500);
+  await page.locator('li:has-text("Corolla")').click(); // cambia por otro modelo si deseas
 
-    // Esperar botón de búsqueda
-    await page.getByRole('button', { name: 'Search' }).click();
+  // Hacer clic en el botón Search
+  await page.locator('button.btn-green:has-text("Search")').click();
+  console.log('✅ Búsqueda enviada');
 
-    // Esperar los resultados
-    await page.waitForSelector('div.search-result');
+  await page.waitForLoadState('networkidle'); // esperar que cargue resultados
+  await page.screenshot({ path: 'resultados.png' });
 
-    console.log("✅ Resultados cargados correctamente.");
-
-    // Puedes capturar y guardar los resultados si lo deseas
-    const titles = await page.$$eval('.search-result .lot-desc', elements =>
-      elements.map(e => e.textContent.trim())
-    );
-
-    console.log("Vehículos encontrados:", titles.length);
-    console.log(titles.slice(0, 5)); // Solo muestra los primeros 5
-
-  } catch (err) {
-    console.error("❌ Error:", err);
-  } finally {
-    await browser.close();
-  }
+  await browser.close();
 })();
