@@ -1,60 +1,60 @@
-// copartBuscar.js
-const fs = require('fs');
 const { chromium } = require('playwright');
 
 (async () => {
-  const browser = await chromium.launch({ headless: true }); // Headless para producción
+  console.log("🟡 Entrando a Copart...");
+
+  const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
-  console.log('🟡 Entrando a Copart...');
-  await page.goto('https://www.copart.com/vehicleFinder', { waitUntil: 'domcontentloaded' });
+  try {
+    await page.goto('https://www.copart.com/vehicleFinder');
 
-  // Espera a que se abra el dropdown de marcas
-  await page.waitForSelector('div#pn_id_15'); // "Make"
-  await page.click('div#pn_id_15'); // Abre el dropdown
+    // Esperar que el campo de año desde esté disponible y hacer clic
+    await page.waitForSelector('label:has-text("Year")');
+    
+    // Click en el dropdown de "Year from"
+    const yearFromDropdown = await page.locator('label:has-text("Year")').locator('xpath=..').locator('button');
+    await yearFromDropdown.click();
+    await page.locator('ul[role="listbox"] >> text=2015').click();
 
-  // Espera a que cargue el contenedor de marcas
-  await page.waitForSelector('ul.p-dropdown-items');
+    // Click en el dropdown de "Year to"
+    const yearToLabel = await page.locator('label:has-text("To")');
+    const yearToDropdown = yearToLabel.locator('xpath=..').locator('button');
+    await yearToDropdown.click();
+    await page.locator('ul[role="listbox"] >> text=2026').click();
 
-  const marcas = await page.$$eval('ul.p-dropdown-items li', items =>
-    items.map(i => i.textContent.trim()).filter(marca => marca && marca !== 'All Makes')
-  );
+    // Seleccionar marca
+    const makeDropdown = await page.getByLabel('Make');
+    await makeDropdown.click();
+    await page.getByRole('option', { name: 'Acura' }).click();
 
-  console.log(`✅ Se extrajeron ${marcas.length} marcas`);
+    // Esperar un momento para cargar modelos
+    await page.waitForTimeout(1500);
 
-  const modelosPorMarca = {};
+    // Seleccionar modelo
+    const modelDropdown = await page.getByLabel('Model');
+    await modelDropdown.click();
+    await page.getByRole('option', { name: 'TL' }).click();
 
-  for (const marca of marcas) {
-    // Volver a cargar la página por cada iteración
-    await page.goto('https://www.copart.com/vehicleFinder', { waitUntil: 'domcontentloaded' });
+    // Esperar botón de búsqueda
+    await page.getByRole('button', { name: 'Search' }).click();
 
-    // Abrir dropdown de marcas
-    await page.waitForSelector('div#pn_id_15');
-    await page.click('div#pn_id_15');
-    await page.waitForSelector('ul.p-dropdown-items');
+    // Esperar los resultados
+    await page.waitForSelector('div.search-result');
 
-    // Elegir marca
-    await page.$$eval('ul.p-dropdown-items li', (items, marcaSeleccionada) => {
-      const item = items.find(i => i.textContent.trim() === marcaSeleccionada);
-      if (item) item.click();
-    }, marca);
+    console.log("✅ Resultados cargados correctamente.");
 
-    // Esperar que cargue el dropdown de modelos
-    await page.waitForTimeout(2000); // puede ajustarse si falla por tiempo
+    // Puedes capturar y guardar los resultados si lo deseas
+    const titles = await page.$$eval('.search-result .lot-desc', elements =>
+      elements.map(e => e.textContent.trim())
+    );
 
-    const modelos = await page.$$eval('ul.p-dropdown-items', lists => {
-      const lista = lists[1]; // el segundo dropdown es para modelos
-      return Array.from(lista.querySelectorAll('li')).map(li => li.textContent.trim()).filter(m => m !== 'All Models');
-    });
+    console.log("Vehículos encontrados:", titles.length);
+    console.log(titles.slice(0, 5)); // Solo muestra los primeros 5
 
-    modelosPorMarca[marca] = modelos;
-    console.log(`➡️ ${marca}: ${modelos.length} modelos`);
+  } catch (err) {
+    console.error("❌ Error:", err);
+  } finally {
+    await browser.close();
   }
-
-  // Guardar ambos JSON
-  fs.writeFileSync('marcas-copart.json', JSON.stringify(marcas, null, 2));
-  fs.writeFileSync('modelos-copart.json', JSON.stringify(modelosPorMarca, null, 2));
-
-  await browser.close();
-  console.log('✅ Extracción completada y guardada en JSON.');
 })();
