@@ -1,38 +1,55 @@
-// copartBuscar.js usando Axios (sin Playwright)
 const axios = require('axios');
+const cheerio = require('cheerio');
 const fs = require('fs');
 
-async function buscarCopart(marca, modelo, anoInicio, anoFin) {
-  const url = 'https://www.copart.com/public/lots/search';
-
-  const params = {
-    query: `${marca} ${modelo}`,
-    page: 1,
-    size: 100,
-    // Si querés filtrar por año, tendríamos que revisar cómo se pasa en la API (puedo ayudarte a afinar esto después)
-  };
+async function buscarBidCars(marca, modelo, anoInicio, anoFin) {
+  const url = `https://bid.cars/en/search/results?search-type=filters&status=All&type=Automobile&make=${marca}&model=${modelo}&year-from=${anoInicio}&year-to=${anoFin}&auction-type=Copart`;
 
   try {
-    const response = await axios.post(url, params, {
+    const { data: html } = await axios.get(url, {
       headers: {
-        'Content-Type': 'application/json',
-      },
+        'User-Agent': 'Mozilla/5.0'
+      }
     });
 
-    const resultados = response.data.data.results.map(lote => ({
-      lote: lote.lotNumberStr,
-      ubicacion: `${lote.itemLocation.city}, ${lote.itemLocation.state}`,
-      fecha: lote.auctionDate,
-      currentBid: lote.currentBid,
-      estatus: lote.lotCurrentStatus,
-    }));
+    const $ = cheerio.load(html);
+    const resultados = [];
+
+    $('.vehicle-item').each((i, el) => {
+      const estado = $(el).find('.lot-status').text().trim();
+      if (
+        estado.toLowerCase().includes('sold') ||
+        estado.toLowerCase().includes('not sold') ||
+        estado.toLowerCase().includes('future') ||
+        estado.toLowerCase().includes('closed')
+      ) {
+        return; // ignorar vehículos vendidos o inactivos
+      }
+
+      const titulo = $(el).find('.vehicle-title').text().trim();
+      const vin = $(el).find('.vin-text').text().trim();
+      const precio = $(el).find('.current-bid .bid-value').text().trim() || 'N/A';
+      const ubicacion = $(el).find('.location').text().trim();
+      const enlace = 'https://bid.cars' + $(el).find('.vehicle-title a').attr('href');
+      const imagen = $(el).find('.vehicle-image img').attr('data-src') || '';
+
+      resultados.push({
+        titulo,
+        vin,
+        precio,
+        ubicacion,
+        estado,
+        enlace,
+        imagen
+      });
+    });
 
     fs.writeFileSync('busqueda-actual.json', JSON.stringify(resultados, null, 2));
-    console.log('✔ Resultados guardados en busqueda-actual.json');
+    console.log(`✔ Se guardaron ${resultados.length} vehículos disponibles en busqueda-actual.json`);
   } catch (error) {
-    console.error('❌ Error buscando en Copart:', error.message);
+    console.error('❌ Error durante la búsqueda en BidCars:', error.message);
   }
 }
 
-// Llamada de prueba
-buscarCopart('Toyota', 'Corolla', 2015, 2020);
+// Prueba fija: Toyota 4Runner 2003–2005
+buscarBidCars('Toyota', '4runner', 2003, 2005);
